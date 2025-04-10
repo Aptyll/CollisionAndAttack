@@ -74,6 +74,12 @@ const RIPPLE_ROTATION_SPEED = 0.06;  // Speed for rotating ring dashes
 const A_MOVE_MARKER_COLOR = 'hsl(0, 70%, 60%)'; // Less intense red for A-Move
 const A_MOVE_RIPPLE_RING_COUNT = 5; // More rings for A-Move
 
+// New Selection Animation Constants
+const SELECTION_DASH_PATTERN = [8, 4]; // Longer dash
+const SELECTION_ANIMATION_SPEED = 0.07;
+const SELECTION_LINE_WIDTH_UNIT = 2; // Thicker than before
+const SELECTION_LINE_WIDTH_BUNKER = 3; // Even thicker for bunkers
+
 // Store player-specific data including supply and color
 const players = {
     1: { supplyCap: 5, currentSupply: 0, color: 'hsl(170, 50%, 50%)' }, // Teal
@@ -81,6 +87,21 @@ const players = {
     3: { supplyCap: 5, currentSupply: 0, color: 'hsl(260, 45%, 60%)' }, // Purple
     4: { supplyCap: 5, currentSupply: 0, color: 'hsl(330, 50%, 60%)' }  // Pink
 };
+
+// --- Helper Functions (Add Color Helper) ---
+function getDarkerHslColor(hslColor, reduction = 20) {
+    // Simple parsing assuming "hsl(H, S%, L%)" format
+    const parts = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+    if (!parts) return '#000000'; // Fallback
+
+    const h = parseInt(parts[1]);
+    const s = parseInt(parts[2]);
+    let l = parseInt(parts[3]);
+
+    l = Math.max(0, l - reduction); // Reduce lightness, clamp at 0
+
+    return `hsl(${h}, ${s}%, ${l}%)`;
+}
 
 // --- Bunker Class ---
 class Bunker {
@@ -101,20 +122,37 @@ class Bunker {
 
     drawBody(ctx, isSelected) {
         if (this.health <= 0) return;
+        const now = performance.now(); // Needed for selection animation
 
         const halfSize = this.size / 2;
         const drawX = this.x - halfSize;
         const drawY = this.y - halfSize;
 
+        // Draw Bunker Body
         ctx.fillStyle = this.color;
         ctx.fillRect(drawX, drawY, this.size, this.size);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 2;
+
+        // Draw Darker Border
+        ctx.strokeStyle = getDarkerHslColor(this.color, 15);
+        ctx.lineWidth = 3; // Increased bunker border thickness
         ctx.strokeRect(drawX, drawY, this.size, this.size);
 
+        // --- Draw Animated Selection --- (Modified)
         if (isSelected && this.playerId === currentPlayerId) {
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = 2;
+            // Save context state we are about to change
+            const originalDash = ctx.getLineDash();
+            const originalOffset = ctx.lineDashOffset;
+            const originalWidth = ctx.lineWidth;
+            const originalStroke = ctx.strokeStyle;
+
+            // Calculate animation offset
+            const dashOffset = -(now * SELECTION_ANIMATION_SPEED) % (SELECTION_DASH_PATTERN[0] + SELECTION_DASH_PATTERN[1]);
+
+            ctx.strokeStyle = this.color; // Use player color
+            ctx.lineWidth = SELECTION_LINE_WIDTH_BUNKER; // Use new thickness
+            ctx.setLineDash(SELECTION_DASH_PATTERN); // Apply dash pattern
+            ctx.lineDashOffset = dashOffset; // Apply animation offset
+
             const padding = 4;
             ctx.strokeRect(
                 drawX - padding,
@@ -122,6 +160,12 @@ class Bunker {
                 this.size + padding * 2,
                 this.size + padding * 2
             );
+
+            // Restore context state
+            ctx.setLineDash(originalDash);
+            ctx.lineDashOffset = originalOffset;
+            ctx.lineWidth = originalWidth;
+            ctx.strokeStyle = originalStroke;
         }
     }
 
@@ -249,17 +293,40 @@ class Unit {
 
     drawBody(ctx, isSelected) {
         if (this.health <= 0) return;
+        const now = performance.now(); // Needed for selection animation
 
         const halfSize = this.size / 2;
         const drawX = this.x - halfSize;
         const drawY = this.y - halfSize;
 
+        // --- Draw Ground Glow --- (if applicable)
+        // ...
+
+        // --- Draw Unit Body ---
         ctx.fillStyle = this.color;
         ctx.fillRect(drawX, drawY, this.size, this.size);
 
+        // --- Draw Darker Border ---
+        ctx.strokeStyle = getDarkerHslColor(this.color, 20);
+        ctx.lineWidth = 2; // Increased unit border thickness
+        ctx.strokeRect(drawX, drawY, this.size, this.size);
+
+        // --- Draw Animated Selection --- (Modified)
         if (isSelected && this.playerId === currentPlayerId) {
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = 1;
+             // Save context state
+            const originalDash = ctx.getLineDash();
+            const originalOffset = ctx.lineDashOffset;
+            const originalWidth = ctx.lineWidth;
+            const originalStroke = ctx.strokeStyle;
+
+            // Calculate animation offset
+            const dashOffset = -(now * SELECTION_ANIMATION_SPEED) % (SELECTION_DASH_PATTERN[0] + SELECTION_DASH_PATTERN[1]);
+
+            ctx.strokeStyle = this.color; // Use player color
+            ctx.lineWidth = SELECTION_LINE_WIDTH_UNIT; // Use new thickness
+            ctx.setLineDash(SELECTION_DASH_PATTERN);
+            ctx.lineDashOffset = dashOffset;
+
             const padding = 3;
             ctx.strokeRect(
                 drawX - padding,
@@ -267,6 +334,12 @@ class Unit {
                 this.size + padding * 2,
                 this.size + padding * 2
             );
+
+             // Restore context state
+            ctx.setLineDash(originalDash);
+            ctx.lineDashOffset = originalOffset;
+            ctx.lineWidth = originalWidth;
+            ctx.strokeStyle = originalStroke;
         }
     }
 
@@ -761,19 +834,29 @@ function drawRippleEffect(ctx, now, x, y, progress, color, startRadius, ringCoun
         if (color.startsWith('hsl')) {
             rgbaColor = color.replace(')', `, ${finalAlpha.toFixed(3)})`).replace('hsl', 'hsla');
         } else {
-             // Handle explicit 'red' for A-move marker
-            if (color === 'red') {
-                 rgbaColor = `rgba(255, 0, 0, ${finalAlpha.toFixed(3)})`;
-            } else {
-                 rgbaColor = `rgba(200, 200, 200, ${finalAlpha.toFixed(3)})`; // Fallback
-            }
+            // Handle explicit 'red' for A-move marker - now handled via A_MOVE_MARKER_COLOR constant which is HSL
+            // if (color === 'red') {
+            //      rgbaColor = `rgba(255, 0, 0, ${finalAlpha.toFixed(3)})`;
+            // } else {
+            //      rgbaColor = `rgba(200, 200, 200, ${finalAlpha.toFixed(3)})`; // Fallback
+            // }
+            // Improved fallback or handling for non-HSL might be needed if other colors are used
+            rgbaColor = `rgba(200, 200, 200, ${finalAlpha.toFixed(3)})`; // Fallback for now
         }
 
-        // Draw the hollow, dotted ring
+        // --- Draw the hollow, dotted SQUARE ---
         ctx.strokeStyle = rgbaColor;
+        // Calculate square properties based on radius
+        const sideLength = currentRadius * 2;
+        const topLeftX = x - currentRadius;
+        const topLeftY = y - currentRadius;
+        // Draw the square instead of arc
+        ctx.strokeRect(topLeftX, topLeftY, sideLength, sideLength);
+        /* // Original circle drawing code:
         ctx.beginPath();
         ctx.arc(x, y, currentRadius, 0, Math.PI * 2);
         ctx.stroke();
+        */
     }
 
     // Restore original dash settings
