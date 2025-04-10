@@ -1,0 +1,53 @@
+body {
+    margin: 0;
+    overflow: hidden; /* Hide scrollbars */
+    background-color: #222; /* Dark background */
+    display: flex; /* Enable flexbox for centering */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    min-height: 100vh; /* Ensure body takes full viewport height */
+}
+
+canvas {
+    display: block; /* Remove extra space below canvas */
+    border: 1px solid #444444; /* More noticeable dark theme border */
+    /* Fixed Size */
+    width: 1000px;
+    height: 700px;
+    /* Ensure it doesn't shrink if window is smaller */
+    flex-shrink: 0;
+}
+
+#playerControls {
+    /* Keep positioning relative to viewport */
+    position: fixed; /* Changed from absolute */
+    bottom: 20px; /* Position near the bottom */
+    left: 50%;
+    transform: translateX(-50%); /* Center horizontally */
+    display: flex;
+    gap: 10px;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.playerBtn {
+    padding: 8px 15px;
+    font-size: 14px;
+    background-color: #555;
+    color: white;
+    border: 1px solid #777;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.playerBtn:hover {
+    background-color: #666;
+}
+
+.playerBtn.active {
+    background-color: hsl(170, 50%, 50%); /* Teal highlight for active player */
+    border-color: hsl(170, 50%, 70%);
+    color: #111;
+} 
