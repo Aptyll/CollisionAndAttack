@@ -80,6 +80,18 @@ const SELECTION_ANIMATION_SPEED = 0.07;
 const SELECTION_LINE_WIDTH_UNIT = 2; // Thicker than before
 const SELECTION_LINE_WIDTH_BUNKER = 3; // Even thicker for bunkers
 
+// New Health Bar Constants
+const HEALTHBAR_UNIT_WIDTH = 30;
+const HEALTHBAR_UNIT_HEIGHT = 5;
+const HEALTHBAR_UNIT_OFFSET_Y = 8; // Distance above unit center
+const HEALTHBAR_BUNKER_WIDTH = 50;
+const HEALTHBAR_BUNKER_HEIGHT = 6;
+const HEALTHBAR_BUNKER_OFFSET_Y = 12; // Distance above bunker center
+const HEALTHBAR_BACKGROUND_COLOR = '#444444';
+const HEALTHBAR_BORDER_COLOR = '#111111';
+const HEALTHBAR_DIVIDER_COLOR = '#111111';
+const HEALTHBAR_BORDER_WIDTH = 1;
+
 // Store player-specific data including supply and color
 const players = {
     1: { supplyCap: 5, currentSupply: 0, color: 'hsl(170, 50%, 50%)' }, // Teal
@@ -101,6 +113,78 @@ function getDarkerHslColor(hslColor, reduction = 20) {
     l = Math.max(0, l - reduction); // Reduce lightness, clamp at 0
 
     return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
+// --- New Health Bar Helper Functions ---
+function getHealthBasedColor(baseHslColor, healthRatio) {
+    const parts = baseHslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+    if (!parts) return '#CCCCCC'; // Fallback grey
+
+    const h = parseInt(parts[1]);
+    let s = parseInt(parts[2]);
+    let l = parseInt(parts[3]);
+
+    // Adjust Lightness and Saturation based on health
+    // Full health: original L, S
+    // Low health: Lower L, slightly lower S
+    // Lerp (linear interpolation)
+    const minL = Math.max(0, l - 25); // Don't go too dark
+    const minS = Math.max(0, s - 30); // Reduce saturation slightly
+
+    const currentL = minL + (l - minL) * healthRatio;
+    const currentS = minS + (s - minS) * healthRatio;
+
+    return `hsl(${h}, ${Math.round(currentS)}%, ${Math.round(currentL)}%)`;
+}
+
+function drawHealthBar(ctx, centerX, topY, currentHealth, maxHealth, width, height, basePlayerColor) {
+    if (currentHealth <= 0) return; // Don't draw if dead
+
+    const healthRatio = Math.max(0, currentHealth / maxHealth);
+    const barX = centerX - width / 2;
+    const barY = topY - height; // Adjust Y based on top coordinate
+
+    // 1. Get dynamic fill color
+    const fillColor = getHealthBasedColor(basePlayerColor, healthRatio);
+
+    // Save context state
+    const originalFill = ctx.fillStyle;
+    const originalStroke = ctx.strokeStyle;
+    const originalLineWidth = ctx.lineWidth;
+
+    // 2. Draw Background
+    ctx.fillStyle = HEALTHBAR_BACKGROUND_COLOR;
+    ctx.fillRect(barX, barY, width, height);
+
+    // 3. Draw Filled Portion
+    ctx.fillStyle = fillColor;
+    const filledWidth = width * healthRatio;
+    ctx.fillRect(barX, barY, filledWidth, height);
+
+    // 4. Draw Dividers
+    ctx.strokeStyle = HEALTHBAR_DIVIDER_COLOR;
+    ctx.lineWidth = HEALTHBAR_BORDER_WIDTH; // Use border width for dividers too
+    const thirdWidth = width / 3;
+    // Line 1 (1/3)
+    ctx.beginPath();
+    ctx.moveTo(barX + thirdWidth, barY);
+    ctx.lineTo(barX + thirdWidth, barY + height);
+    ctx.stroke();
+    // Line 2 (2/3)
+    ctx.beginPath();
+    ctx.moveTo(barX + 2 * thirdWidth, barY);
+    ctx.lineTo(barX + 2 * thirdWidth, barY + height);
+    ctx.stroke();
+
+    // 5. Draw Border
+    ctx.strokeStyle = HEALTHBAR_BORDER_COLOR;
+    ctx.lineWidth = HEALTHBAR_BORDER_WIDTH;
+    ctx.strokeRect(barX, barY, width, height);
+
+    // Restore context state
+    ctx.fillStyle = originalFill;
+    ctx.strokeStyle = originalStroke;
+    ctx.lineWidth = originalLineWidth;
 }
 
 // --- Bunker Class ---
@@ -176,6 +260,18 @@ class Bunker {
         const now = performance.now(); // Needed for animations
         const halfSize = this.size / 2;
 
+        // --- Generate Health Bar Command --- Changed from text
+        commands.push({
+            type: 'healthBar',
+            centerX: this.x,
+            topY: this.y - halfSize - HEALTHBAR_BUNKER_OFFSET_Y,
+            currentHealth: this.health,
+            maxHealth: this.maxHealth,
+            width: HEALTHBAR_BUNKER_WIDTH,
+            height: HEALTHBAR_BUNKER_HEIGHT,
+            basePlayerColor: this.color // Pass player color
+        });
+        /* Original Text Health:
         commands.push({
             type: 'text',
             content: this.health,
@@ -185,6 +281,7 @@ class Bunker {
             font: BUNKER_HEALTH_FONT,
             textAlign: 'center'
         });
+        */
 
         if (isSelected && this.playerId === currentPlayerId) {
             const lineDashOffset = -(now * RALLY_LINE_ANIMATION_SPEED) % (RALLY_LINE_DASH_PATTERN[0] + RALLY_LINE_DASH_PATTERN[1]);
@@ -350,7 +447,18 @@ class Unit {
         const now = performance.now(); // Needed for rotation offset
         const halfSize = this.size / 2;
 
-        // Health Bar command
+        // Health Bar command - Changed from text
+        commands.push({
+            type: 'healthBar',
+            centerX: this.x,
+            topY: this.y - halfSize - HEALTHBAR_UNIT_OFFSET_Y,
+            currentHealth: this.health,
+            maxHealth: this.maxHealth,
+            width: HEALTHBAR_UNIT_WIDTH,
+            height: HEALTHBAR_UNIT_HEIGHT,
+            basePlayerColor: this.color // Pass player color
+        });
+        /* Original Text Health:
         commands.push({
             type: 'text',
             content: this.health,
@@ -360,6 +468,7 @@ class Unit {
             font: HEALTH_BAR_FONT,
             textAlign: 'center'
         });
+        */
 
         // Attack Range Indicator command
         if (isSelected && this.playerId === currentPlayerId && isAMoveMode) {
@@ -961,6 +1070,9 @@ function executeDrawCommand(ctx, command) {
             // Reset dash properties
             ctx.setLineDash(originalDash);
             ctx.lineDashOffset = originalOffset;
+            break;
+        case 'healthBar':
+            drawHealthBar(ctx, command.centerX, command.topY, command.currentHealth, command.maxHealth, command.width, command.height, command.basePlayerColor);
             break;
     }
 }
